@@ -91,10 +91,11 @@ def buildTree(subset, node, features):
     Return
         No return value
     '''
+    print(features,subset.shape)
     if not isinstance(subset, np.ndarray): raise Exception('Must be a numpy array')
     if not features or len(features) < 1: raise Exception('No features left.')
     if node is None or node.children is None: raise Exception('No node or improperly created.')
-    if subset is None or subset.shape[0] < 2 or subset.shape[1] < 1 or len(features) > subset.shape[1]: 
+    if subset is None or subset.shape[0] < 1 or subset.shape[1] < 1 or len(features) > subset.shape[1]: 
         raise Exception('subset is not being read in correctly.')
     
     labels = np.unique(subset[:,-1])
@@ -332,7 +333,7 @@ class TestID3Functions(unittest.TestCase):
             'Humidity' : round(root_gain - ((7/13)*round(0.98522813603425, 6) + (6/13)*round(0.65002242164835,6))),
             'Wind' : round(root_gain - ((6/13)*1.0 + (7/13)*common_e['one_third']), 6)
         }
-        root = ID3(10,10,play_tennis_data)
+        root = ID3(3,3,play_tennis_data)
         self.print_tree(root)
         self.assertEqual(1, 1)
 
@@ -352,7 +353,7 @@ class TestID3Functions(unittest.TestCase):
                 next_width+= len(n.children)
                 nodes.extend([[child, n] for child in n.children])
             p = depth*2
-            print(f"{'':^{p}} Parent {parent.feature}")
+            print(f"{'':^{p}} Parent {parent.feature} : {parent.decision}")
             print(f"{'':^{p}}{n}")
         return
     def test_tree_build_one_level_perfect_gain(self):
@@ -392,7 +393,8 @@ class TestID3Functions(unittest.TestCase):
             ['d','C','L',0],
         ])
         
-        root = ID3(1,2,test_w_data)
+        root = ID3(2,3,test_w_data)
+        self.print_tree(root)
         self.assertEqual(1,1)
 
 if __name__ == '__main__':
