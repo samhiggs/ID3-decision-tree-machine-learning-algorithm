@@ -5,39 +5,140 @@ import unittest, random, math, os, sys
 from matplotlib import pyplot as plt
 
 class Node:
-    def __init__(self):
-        self.data = None
-        self.entropy = None
-        self.condition = None
-        
-        self.parent = None
-        self.children = None
-        
+    def __init__(self, f, d):
+        self.feature = f
+        self.decision = d
+        self.children = []
+
+    def __str__(self):
+       return ''' Node
+            {:>7} : {:<4}
+            {:>7} : {:<4}
+            {:>7} : {:<4}
+       '''.format(\
+            'Feature', self.feature if self.feature is not None else 'NA',\
+            'Decision', self.decision if self.decision is not None else 'NA', \
+            'N Children', len(self.children) if self.children else 'False', \
+        )
+
+    def __eq__(self, other):
+        return(
+            self.__class__==other.__class__ and \
+            self.feature == other.feature and \
+            self.decision == other.decision and \
+            self.children == other.children \
+        )
+
+data_surround = '\n{:{fill}{align}{width}}\n'
+
 
 def ID3(d, n, data):
-    if not isinstance(data, np.ndarray): data = np.asarray(data)
-    #load in data
-    #This dataset HAS A HEADER!
-    header = data[0]
-    data = data[1:]
-    root = Node()
-    root.data = data
-    root.entropy = entropy(data[:,-1])
-    root.condition='root'
-    root.parent = None
+    '''
+    ID3 builds a decision tree recursively. Assumes the data has no features
+    in the header. Features should be described in the 
+    Parameters
+        d (int):
+            The max depth of the tree 
+        n (int):
+            The maximum number of nodes
+        data (list): 
+            n-dimensional dataset
+    Returns
+        root (Node):
+            The root of the tree of depth d.
+    '''
+    #Check to ensure the inputs are valid.
+    if d is None or not isinstance(d, int) or d < 1: raise Exception('d is not valid')
+    if n is None or not isinstance(n, int) or n < d or n > len(data[0]): raise Exception('n is not valid')
+    if data is None: raise Exception('data is not valid')
+    #convert the dataset to a numpy array.
+    try:
+        if not isinstance(data, np.ndarray): 
+            data = np.asarray(data)
+        rows, cols = data.shape
+        if rows < 2 or cols < 2:
+            raise Exception('The dataset will not be useful as there are to few rows and/or columns')
+    except Exception as e:
+        print(e)
+        raise Exception('The data cannot be converted in into a numpy array ')
+
+    features = ['c_'+str(i) for i in range(cols-1)]
+    features.append('labels')
+
+    #Setup tree
+    root = Node('root', 'root')
+    print(data_surround.format('Building Tree', fill='*', align='^', width=50))
+    buildTree(data, root, features)
+    return root
+
+def buildTree(subset, node, features):
+    '''
+    buildTree is a helper function for the ID3 and will recursively build a tree.
+    The base cases are whether all the indices are the same and therefore cannot be
+    split further. In this case, it will return. The tree is built of the initial node, 
+    therefore no return value is necessary.
+    WARNING: The dataset in the nodes are NOT changed, only the featureset is manipulated.
+    This is to avoid excess computation by copying a dataset everytime, instead it just
+    points to the one dataset but it's important to use the features as a source of truth.
+    Parameters
+        node (Node) : 
+            the node for which children will be spawned
+        target_feature (int) : 
+            The index of the target feature relative to the list of features.
+        features (list[(String)]):
+            List of features remaining in the dataset. Used to label the nodes
+
+    Return
+        No return value
+    '''
+    if not isinstance(subset, np.ndarray): raise Exception('Must be a numpy array')
+    if not features or len(features) < 1: raise Exception('No features left.')
+    if node is None or node.children is None: raise Exception('No node or improperly created.')
+    if subset is None or subset.shape[0] < 2 or subset.shape[1] < 1 or len(features) > subset.shape[1]: 
+        raise Exception('subset is not being read in correctly.')
     
+    labels = np.unique(subset[:,-1])
+    # Base case for if all labels are the same.
+    if len(labels) == 1:
+        leaf = Node(features[-1], labels[0])
+        node.children.append(leaf)
+        return
+
+    # Base case for if we are at the end of the dataset
+    if len(features) == 1:
+        for cat in np.unique(subset[:,-1]):
+            leaf = Node(features[0], cat)
+            node.children.append(leaf)
+        return
+    # Make absolutely sure that we don't keep going
+    if len(features) == 0: raise Exception('Oops we should not have hit this...Check code!')
+   
+   #Recursive Function given the best feature of the set (target feature)
+    
+    max_idx = np.argmax([compute_gain(subset, f)[0] for f, _ in enumerate(features[:-1])])
+    feature = features.pop(max_idx)
+    for c in np.unique(subset[:, max_idx]):
+        #create a child node
+        child = Node(feature, c)
+        node.children.append(child)
+        #split the data
+        child_data = subset[subset[:,max_idx]==c]
+        child_data = np.concatenate((child_data[:,:max_idx], child_data[:,max_idx+1:]), axis=1)
+        buildTree(child_data, child, features)
+    return
+
+
+def visualiseData(data):
     rows, cols = data.shape
     col_data = {}
     for i in range(cols):
         cat, counts = np.unique(data[:,i], return_counts=True)
         decisions = [data[:,-1][data[:,i]==c] for c in cat]
         decisions = [', '.join(d) for d in decisions]
-        col_data[header[i]]={}
-        col_data[header[i]].update({cat:{'count': c, 'decisions':d} for cat, c, d in zip(cat, counts, decisions)})
+        col_data[i]={}
+        col_data[i].update({cat:{'count': c, 'decisions':d} for cat, c, d in zip(cat, counts, decisions)})
         # col_data[header[i]].update({'Total':sum(counts)})
 
-
-    data_surround = '\n{:{fill}{align}{width}}\n'
     print(data_surround.format('Data Summary', fill='*', align='^', width=50))
     print('n rows : {}, n cols : {}'.format(rows, cols))
     print('Column categories and count:')
@@ -46,38 +147,8 @@ def ID3(d, n, data):
         for col_cats,val in v.items():
             print('{:>16}: {:>2} : {:>2}'.format(col_cats, val['count'], val['decisions']))
     print(data_surround.format('End Summary', fill='*', align='^', width=50))
-    
-    buildTree(root, data)
 
-    return root
-
-def buildTree(node, S):
-    '''
-    buildTree is a helper function for the ID3 and will recursively build a tree.
-    The base cases are whether all the indices are the same and therefore cannot be
-    split further. In this case, it will return. The tree is built of the initial node, 
-    therefore no return value is necessary.
-    Parameters
-        node (Node) : the node for which children will be spawned
-        S (npArray) : the dataset that will be analysed, Labels must be in the last column.
-    
-    Return
-        No return value
-    '''
-    print('Building tree with dataset...')
-    if not isinstance(S, np.ndarray): S = np.asarray(S)  
-    if node.entropy is None: node.entropy=entropy(S[:,-1])
-    n_features = S.shape[1]-1
-    print('Tree is estimated to have {} more levels'.format(n_features))
-    print('Calculating the largest gain...')
-    gains = [node.entropy - compute_gain(S, i) for i in range(n_features)]
-    print(gains)
-    max_gain = max(gains)
-    print('largest gain is {:0.6f}'.format(max_gain))
-    lNode, rNode = Node(), Node()
-
-
-    return
+    print(data_surround.format('Visualise The Data', fill='*', align='^', width=50))
 
 def load_dataset(path):
     '''
@@ -86,8 +157,6 @@ def load_dataset(path):
     '''
     if not os.path.isfile(path): return -1
     pass
-
-    
 
 def compute_gain(S, i):
     '''
@@ -106,20 +175,12 @@ def compute_gain(S, i):
     subset = S[:,[i,-1]]
     rows, cols = subset.shape      
     total_entropy = entropy(subset[:,-1])
-    labels = np.unique(subset[:,-1])
     categories = np.unique(subset[:,0])
     divided_S = [subset[subset[:,0]==c] for c in categories]
     entropies = [entropy(div_s[:,-1]) for div_s in divided_S]
     props = [len(div_s)/rows for div_s in divided_S] #count/rows for each category for each column
     combined = sum([x*y for x,y in zip(props, entropies)])
-    # print(total_entropy)
-    # print(labels)
-    # print(categories)
-    # print(divided_S)
-    # print(entropies)
-    # print(props)
-    # print(combined)
-    return total_entropy - combined
+    return (total_entropy - combined), categories
 
 def entropy(S):
     '''
@@ -178,7 +239,7 @@ common_e = {
 
 }
 class TestID3Functions(unittest.TestCase):
-    @unittest.skip('Passed')
+    
     def test_entropy(self):
         simpleData = [['a','orange'],['b','apple']]
         data = np.array(simpleData)[:,0]
@@ -186,7 +247,6 @@ class TestID3Functions(unittest.TestCase):
         print('entropy for simpleData is {}'.format(e))
         self.assertEqual(e, 1)
 
-    @unittest.skip('Passed')
     def test_another_entropy(self):
         simpleData = [['a','orange'], ['b', 'apple'], ['b', 'apple'],['b','apple']]
         dataLeft = np.array(simpleData)[:,0]
@@ -198,7 +258,6 @@ class TestID3Functions(unittest.TestCase):
         self.assertEqual(el, common_e['one_quarter'])
         self.assertEqual(er, common_e['one_quarter'])
 
-    @unittest.skip('Passed')
     def test_numeric_entropy(self):
         dataColOne = np.array(test_data)[:,0]
         dataColTwo = np.array(test_data)[:,1]
@@ -209,10 +268,8 @@ class TestID3Functions(unittest.TestCase):
         print('Entropy for test data column 2(labels) is {}'.format(entropies[2]))
         expected_o = [common_e['two_fifths'], common_e['two_fifths'], round(-((7/10)*math.log(7/10, 2) + (3/10)*math.log(3/10, 2)), 6)]
         self.assertListEqual(entropies, expected_o)
-
+    
     def test_compute_gain(self):
-        print('Running compute Gain Test')
-
         uncertain_data = np.array([
             [0,'a'],
             [0, 'a'],
@@ -220,7 +277,6 @@ class TestID3Functions(unittest.TestCase):
             [1, 'a'],
             [1, 'b']
         ])
-
         uncertain_to_certain = np.array([
             [0,'a'],
             [0,'a'],
@@ -233,14 +289,11 @@ class TestID3Functions(unittest.TestCase):
         uncertain_gain = compute_gain(uncertain_data, 0)
         gain_col0 = compute_gain(test_data,0)
         gain_col1 = compute_gain(test_data,1)
-        #root gain - (sum pilog(pi)*pi)
         self.assertEqual(round(uncertain_gain,6), 0.019973)
         self.assertEqual(round(compute_gain(uncertain_to_certain,0),6), 1)
-
         self.assertEqual(round(gain_col0,6), .556780)
         self.assertEqual(round(gain_col1, 6), .281291)
 
-    @unittest.skip
     def test_split(self):
             print('running test split.')
             data = [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20]
@@ -251,10 +304,8 @@ class TestID3Functions(unittest.TestCase):
             self.assertEqual(len(train_set), len(data)*.7)
             self.assertEqual(len(test_set), len(data)*.3)
     
-    def test_ID3_level_1_gain(self):
-        print('running ID3 init test')
+    def test_ID3_temp_data(self):
         play_tennis_data = np.array([
-            ['Outlook', 'Temperature', 'Humidity', 'Wind', 'Decision'],
             ['Sunny', 'Hot', 'High', 'Weak', 'No'],
             ['Sunny', 'Mild', 'High', 'Weak', 'No'],
             ['Sunny', 'Mild', 'Normal', 'Strong', 'Yes'],
@@ -269,6 +320,9 @@ class TestID3Functions(unittest.TestCase):
             ['Rain', 'Mild', 'Normal', 'Weak', 'Yes'],
             ['Rain', 'Mild', 'High', 'Strong', 'No']]
         )
+        features = ['Outlook', 'Temperature', 'Humidity', \
+            'Wind', 'Decision'],
+
         #Calculations made using wolframalpha
         root_gain = round(0.96123660472287587, 6)
         expected_gain = {
@@ -278,18 +332,69 @@ class TestID3Functions(unittest.TestCase):
             'Humidity' : round(root_gain - ((7/13)*round(0.98522813603425, 6) + (6/13)*round(0.65002242164835,6))),
             'Wind' : round(root_gain - ((6/13)*1.0 + (7/13)*common_e['one_third']), 6)
         }
-        for k, v in expected_gain.items():
-            print('{} : {}'.format(k,v))
-        tree = ID3('a','b',play_tennis_data)
+        root = ID3(10,10,play_tennis_data)
+        self.print_tree(root)
         self.assertEqual(1, 1)
+
+    def print_tree(self, root):
+        nodes = [[root, root]]
+        width, next_width = 1, 0
+        depth = 0
+        while len(nodes) > 0:
+            n, parent = nodes.pop(0)
+            if width == 0: 
+                depth += 1
+                width = next_width
+                next_width = 0
+            width -= 1
+
+            if len(n.children) > 0:
+                next_width+= len(n.children)
+                nodes.extend([[child, n] for child in n.children])
+            p = depth*2
+            print(f"{'':^{p}} Parent {parent.feature}")
+            print(f"{'':^{p}}{n}")
+        return
+    def test_tree_build_one_level_perfect_gain(self):
+        #Build tree to test.
+        data = np.asarray([
+            ['sun', 'sun', 'sun', 'cloud', 'cloud'],
+            ['go_outside', 'go_outside', 'go_outside', 'stay_indoors', 'stay_indoors']
+        ])
+        data = data.T
+        root = ID3(6,6,data)
+        self.assertEqual(1, 1)
+
+    def test_simple_helper(self):
+        simple_d = np.array([
+            [0,1],
+            [0,1],
+            [1,0],
+            [1,0],
+        ])
+        node = Node('root', 'root')
+        features = ['wind', 'label']
+        root = ID3(1,1,simple_d)
+        self.print_tree(root)
+        self.assertEqual(1,1)
+
+    def test_tree_two_level_imperfect_gain(self):
+        test_w_data = np.asarray([
+            ['w','C','H',0],
+            ['w','C','L',0],
+            ['w','C','L',0],
+            ['w','H','L',0],
+            ['w','H','L',1],
+            ['d','H','H',1],
+            ['d','H','H',1],
+            ['d','H','H',1],
+            ['d','C','H',1],
+            ['d','C','L',0],
+        ])
+        
+        root = ID3(1,2,test_w_data)
+        self.assertEqual(1,1)
 
 if __name__ == '__main__':
     #Testing functions
     unittest.main()
-    '''
-    t = TestingFunctions()
-    t_id3 = TestID3Functions()
-    t_id3.test_entropy()
-    # t.test_split()
-    # t_id3.test_ID3()
-    '''
