@@ -1,10 +1,14 @@
-#Decision tree assignment 
-#The number of leaves determines the VC dimension of your model.
 import numpy as np
+import pandas as pd
 import unittest, random, math, os, sys
 from matplotlib import pyplot as plt
 
+
 class Node:
+    '''
+    The Node data structure is used to store the feature and 
+    decision for each feature and decision of the binary tree
+    '''
     def __init__(self, f, d):
         self.feature = f
         self.decision = d
@@ -32,7 +36,7 @@ class Node:
 data_surround = '\n{:{fill}{align}{width}}\n'
 
 
-def ID3(d, n, data):
+def ID3(d, n, data, header=None):
     '''
     ID3 builds a decision tree recursively. Assumes the data has no features
     in the header. Features should be described in the 
@@ -49,9 +53,9 @@ def ID3(d, n, data):
     '''
     #Check to ensure the inputs are valid.
     if d is None or not isinstance(d, int) or d < 1: raise Exception('d is not valid')
-    if n is None or not isinstance(n, int) or n < d or n > len(data[0]): raise Exception('n is not valid')
+    if n is None or not isinstance(n, int) or n < d : raise Exception('n is not valid')
     if data is None: raise Exception('data is not valid')
-    #convert the dataset to a numpy array.
+    #convert the dataset to a numpy array so we can use some of the app. methods..
     try:
         if not isinstance(data, np.ndarray): 
             data = np.asarray(data)
@@ -61,10 +65,11 @@ def ID3(d, n, data):
     except Exception as e:
         print(e)
         raise Exception('The data cannot be converted in into a numpy array ')
-
-    features = ['c_'+str(i) for i in range(cols-1)]
-    features.append('labels')
-
+    if header is None:
+        features = ['c_'+str(i) for i in range(cols-1)]
+        features.append('labels')
+    else:
+        features = header
     #Setup tree
     root = Node('root', 'root')
     print(data_surround.format('Building Tree', fill='*', align='^', width=50))
@@ -83,10 +88,10 @@ def buildTree(subset, node, features):
     Parameters
         node (Node) : 
             the node for which children will be spawned
-        target_feature (int) : 
-            The index of the target feature relative to the list of features.
-        features (list[(String)]):
-            List of features remaining in the dataset. Used to label the nodes
+        features (list) : 
+            The indexed list of features which reduces each time a feature is split. 
+        subset (ndarray):
+            an n-dim array representing a subset of the data which hasn't been analysed.
 
     Return
         No return value
@@ -101,7 +106,7 @@ def buildTree(subset, node, features):
     labels = np.unique(subset[:,-1])
     # Base case for if all labels are the same.
     if len(labels) == 1:
-        leaf = Node(features[-1], labels[0])
+        leaf = Node(subset[0,-1], labels[0])
         node.children.append(leaf)
         return
 
@@ -128,7 +133,7 @@ def buildTree(subset, node, features):
         buildTree(child_data, child, features)
     return
 
-
+#Helper for debugging.
 def visualiseData(data):
     rows, cols = data.shape
     col_data = {}
@@ -151,14 +156,28 @@ def visualiseData(data):
 
     print(data_surround.format('Visualise The Data', fill='*', align='^', width=50))
 
-def load_dataset(path):
-    '''
-    Load dataset takes in a path to a file and loads it using pandas.
+def print_tree(root):
+    nodes = [[root, root]]
+    width, next_width = 1, 0
+    depth = 0
+    while len(nodes) > 0:
+        n, parent = nodes.pop(0)
+        if width == 0: 
+            depth += 1
+            width = next_width
+            next_width = 0
+        width -= 1
 
-    '''
-    if not os.path.isfile(path): return -1
-    pass
+        if len(n.children) > 0:
+            next_width+= len(n.children)
+            nodes.extend([[child, n] for child in n.children])
+        p = depth*2
+        print(f"{'':^{p}} Parent {parent.feature} : {parent.decision}")
+        print(f"{'':^{p}}{n}")
+    return
 
+
+#Complete and working
 def compute_gain(S, i):
     '''
     Gain computation by splitting the set across the ith index using the entropy calculations
@@ -183,6 +202,7 @@ def compute_gain(S, i):
     combined = sum([x*y for x,y in zip(props, entropies)])
     return (total_entropy - combined), categories
 
+#Complete and working
 def entropy(S):
     '''
     Calculate the entropy of a dataset across label l
@@ -203,15 +223,35 @@ def entropy(S):
 
 #Randomly divide the data by the percentage split.
 def split_data(data, split):
-    print('running split_data')
+    '''
+    split_data generates a random set of indices which then divide the training and test set
+    Parameters:
+        data (ndarray):
+            n-dim array that is being split
+        split (float):
+            The percentage split for example, .7 is 70% split
+
+    Return:
+        test, train (ndarray, ndarray):
+            two n-dim arrays with the appropriate split.
+    '''
     largerSplit = split if split > .5 else 1 - split
-    test_set = []
-    training_set_idx = random.sample(range(len(data)),int(len(data)*largerSplit))
-    training_set = [data[i] for i in training_set_idx]
-    test_set = [d for d in data if d not in training_set]
+    training_set_is = random.sample(range(len(data)),int(len(data)*largerSplit))
+    test_set_is = [i for i in range(len(data)) if i not in training_set_is]
+    training_set = data[training_set_is, : ]
+    test_set = data[test_set_is, : ]
     return training_set, test_set
 
 def learning_curve(d, n, training_set, test_set):
+    '''
+    I ran out of time to implement this sadly, The function was starting to be written but I ran into mistakes so
+    removed it to ensure that it could run.
+    The implementation was going to limit the depth and bredth of the decision tree to d and n, choosing the best
+    gain greedily. It would fit the model using the training set, then predict using the test_set and apply a column of labels
+    It would then calculate the difference between the labels it predicted and the actual labels, and use this to measure
+    the Errors
+
+    '''
     plot = ''
     # you will probably need additional helper functions
     return plot
@@ -399,4 +439,34 @@ class TestID3Functions(unittest.TestCase):
 
 if __name__ == '__main__':
     #Testing functions
-    unittest.main()
+    # unittest.main()
+    data_fn = 'data\house-votes-84.data'
+    names = [
+        'Class Name',
+        'handicapped-infants',
+        'water-project-cost-sharing',
+        'adoption-of-the-budget-resolution',
+        'physician-fee-freeze',
+        'el-salvador-aid',
+        'religious-groups-in-schools',
+        'anti-satellite-test-ban',
+        'aid-to-nicaraguan-contras',
+        'mx-missile',
+        'immigration',
+        'synfuels-corporation-cutback',
+        'education-spending',
+        'superfund-right-to-sue',
+        'crime',
+        'duty-free-exports',
+        'export-administration-act-south-africa',
+    ]
+    names = [ name.replace(' ', '_').lower() for name in names]
+    data = pd.read_csv(data_fn,names=names )
+    data = data.replace('?', np.nan)
+    data = data.fillna(method='pad')
+    data = data.fillna('y')
+    n = names.pop(0)
+    names.append(n)
+    train, test = split_data(data.values, .7)
+    root = ID3(3,3,train, names)
+    print_tree(root)
